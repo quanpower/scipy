@@ -27,7 +27,7 @@ from scipy.sparse import csc_matrix
 from scipy.io.harwell_boeing._fortran_format_parser import \
         FortranFormatParser, IntFormat, ExpFormat
 
-from scipy.lib.six import string_types
+from scipy._lib.six import string_types
 
 __all__ = ["MalformedHeader", "hb_read", "hb_write", "HBInfo", "HBFile",
            "HBMatrixType"]
@@ -175,7 +175,7 @@ class HBInfo(object):
             raise ValueError("mxtype expected to be 3 characters long")
 
         mxtype = HBMatrixType.from_fortran(mxtype_s)
-        if not mxtype.value_type in ["real", "integer"]:
+        if mxtype.value_type not in ["real", "integer"]:
             raise ValueError("Only real or integer matrices supported for "
                              "now (detected %s)" % mxtype)
         if not mxtype.structure == "unsymmetric":
@@ -244,16 +244,16 @@ class HBInfo(object):
 
         values_format = parser.parse(values_format_str)
         if isinstance(values_format, ExpFormat):
-            if not mxtype.value_type in ["real", "complex"]:
+            if mxtype.value_type not in ["real", "complex"]:
                 raise ValueError("Inconsistency between matrix type %s and "
                                  "value type %s" % (mxtype, values_format))
             values_dtype = np.float64
         elif isinstance(values_format, IntFormat):
-            if not mxtype.value_type in ["integer"]:
+            if mxtype.value_type not in ["integer"]:
                 raise ValueError("Inconsistency between matrix type %s and "
                                  "value type %s" % (mxtype, values_format))
             # XXX: fortran int -> dtype association ?
-            values_dtype = np.int
+            values_dtype = int
         else:
             raise ValueError("Unsupported format for values %r" % (values_format,))
 
@@ -313,12 +313,12 @@ def _read_hb_data(content, header):
     ptr_string = "".join([content.read(header.pointer_nbytes_full),
                            content.readline()])
     ptr = np.fromstring(ptr_string,
-            dtype=np.int, sep=' ')
+            dtype=int, sep=' ')
 
     ind_string = "".join([content.read(header.indices_nbytes_full),
                        content.readline()])
     ind = np.fromstring(ind_string,
-            dtype=np.int, sep=' ')
+            dtype=int, sep=' ')
 
     val_string = "".join([content.read(header.values_nbytes_full),
                           content.readline()])
@@ -402,11 +402,11 @@ class HBMatrixType(object):
         self.structure = structure
         self.storage = storage
 
-        if not value_type in self._q2f_type:
+        if value_type not in self._q2f_type:
             raise ValueError("Unrecognized type %s" % value_type)
-        if not structure in self._q2f_structure:
+        if structure not in self._q2f_structure:
             raise ValueError("Unrecognized structure %s" % structure)
-        if not storage in self._q2f_storage:
+        if storage not in self._q2f_storage:
             raise ValueError("Unrecognized storage %s" % storage)
 
     @property
@@ -428,7 +428,7 @@ class HBFile(object):
         ----------
         file : file-object
             StringIO work as well
-        hb_info : HBInfo
+        hb_info : HBInfo, optional
             Should be given as an argument for writing, in which case the file
             should be writable.
         """
@@ -467,14 +467,14 @@ class HBFile(object):
         return _write_data(m, self._fid, self._hb_info)
 
 
-def hb_read(file):
+def hb_read(path_or_open_file):
     """Read HB-format file.
 
     Parameters
     ----------
-    file : str-like or file-like
-        If a string-like object, file is the name of the file to read. If a
-        file-like object, the data are read from it.
+    path_or_open_file : path-like or file-like
+        If a file-like object, it is used as-is. Otherwise it is opened
+        before reading.
 
     Returns
     -------
@@ -495,24 +495,21 @@ def hb_read(file):
         hb = HBFile(fid)
         return hb.read_matrix()
 
-    if isinstance(file, string_types):
-        fid = open(file)
-        try:
-            return _get_matrix(fid)
-        finally:
-            fid.close()
+    if hasattr(path_or_open_file, 'read'):
+        return _get_matrix(path_or_open_file)
     else:
-        return _get_matrix(file)
+        with open(path_or_open_file) as f:
+            return _get_matrix(f)
 
 
-def hb_write(file, m, hb_info=None):
+def hb_write(path_or_open_file, m, hb_info=None):
     """Write HB-format file.
 
     Parameters
     ----------
-    file : str-like or file-like
-        if a string-like object, file is the name of the file to read. If a
-        file-like object, the data are read from it.
+    path_or_open_file : path-like or file-like
+        If a file-like object, it is used as-is. Otherwise it is opened
+        before writing.
     m : sparse-matrix
         the sparse matrix to write
     hb_info : HBInfo
@@ -539,11 +536,8 @@ def hb_write(file, m, hb_info=None):
         hb = HBFile(fid, hb_info)
         return hb.write_matrix(m)
 
-    if isinstance(file, string_types):
-        fid = open(file, "w")
-        try:
-            return _set_matrix(fid)
-        finally:
-            fid.close()
+    if hasattr(path_or_open_file, 'write'):
+        return _set_matrix(path_or_open_file)
     else:
-        return _set_matrix(file)
+        with open(path_or_open_file, 'w') as f:
+            return _set_matrix(f)

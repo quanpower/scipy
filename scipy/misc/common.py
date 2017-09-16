@@ -5,86 +5,10 @@ Functions which are common and require SciPy Base and Level 1 SciPy
 
 from __future__ import division, print_function, absolute_import
 
-from numpy import exp, log, asarray, arange, newaxis, hstack, product, array, \
-                  zeros, eye, poly1d, r_, rollaxis, sum, fromstring
+import numpy as np
+from numpy import arange, newaxis, hstack, product, array, fromstring
 
-__all__ = ['logsumexp', 'central_diff_weights', 'derivative', 'pade', 'lena',
-           'ascent', 'face']
-
-# XXX: the factorial functions could move to scipy.special, and the others
-# to numpy perhaps?
-
-
-def logsumexp(a, axis=None, b=None):
-    """Compute the log of the sum of exponentials of input elements.
-
-    Parameters
-    ----------
-    a : array_like
-        Input array.
-    axis : int, optional
-        Axis over which the sum is taken. By default `axis` is None,
-        and all elements are summed.
-
-        .. versionadded:: 0.11.0
-    b : array-like, optional
-        Scaling factor for exp(`a`) must be of the same shape as `a` or
-        broadcastable to `a`.
-
-        .. versionadded:: 0.12.0
-
-    Returns
-    -------
-    res : ndarray
-        The result, ``np.log(np.sum(np.exp(a)))`` calculated in a numerically
-        more stable way. If `b` is given then ``np.log(np.sum(b*np.exp(a)))``
-        is returned.
-
-    See Also
-    --------
-    numpy.logaddexp, numpy.logaddexp2
-
-    Notes
-    -----
-    Numpy has a logaddexp function which is very similar to `logsumexp`, but
-    only handles two arguments. `logaddexp.reduce` is similar to this
-    function, but may be less stable.
-
-    Examples
-    --------
-    >>> from scipy.misc import logsumexp
-    >>> a = np.arange(10)
-    >>> np.log(np.sum(np.exp(a)))
-    9.4586297444267107
-    >>> logsumexp(a)
-    9.4586297444267107
-
-    With weights
-
-    >>> a = np.arange(10)
-    >>> b = np.arange(10, 0, -1)
-    >>> logsumexp(a, b=b)
-    9.9170178533034665
-    >>> np.log(np.sum(b*np.exp(a)))
-    9.9170178533034647
-    """
-    a = asarray(a)
-    if axis is None:
-        a = a.ravel()
-    else:
-        a = rollaxis(a, axis)
-    a_max = a.max(axis=0)
-    if b is not None:
-        b = asarray(b)
-        if axis is None:
-            b = b.ravel()
-        else:
-            b = rollaxis(b, axis)
-        out = log(sum(b * exp(a - a_max), axis=0))
-    else:
-        out = log(sum(exp(a - a_max), axis=0))
-    out += a_max
-    return out
+__all__ = ['central_diff_weights', 'derivative', 'lena', 'ascent', 'face']
 
 
 def central_diff_weights(Np, ndiv=1):
@@ -136,7 +60,7 @@ def derivative(func, x0, dx=1.0, n=1, args=(), order=3):
         Input function.
     x0 : float
         The point at which `n`-th derivative is found.
-    dx : int, optional
+    dx : float, optional
         Spacing.
     n : int, optional
         Order of the derivative. Default is 1.
@@ -151,9 +75,9 @@ def derivative(func, x0, dx=1.0, n=1, args=(), order=3):
 
     Examples
     --------
+    >>> from scipy.misc import derivative
     >>> def f(x):
     ...     return x**3 + x**2
-    ...
     >>> derivative(f, 1.0, dx=1e-6)
     4.9999999999217337
 
@@ -196,64 +120,11 @@ def derivative(func, x0, dx=1.0, n=1, args=(), order=3):
     return val / product((dx,)*n,axis=0)
 
 
-def pade(an, m):
-    """
-    Return Pade approximation to a polynomial as the ratio of two polynomials.
-
-    Parameters
-    ----------
-    an : (N,) array_like
-        Taylor series coefficients.
-    m : int
-        The order of the returned approximating polynomials.
-
-    Returns
-    -------
-    p, q : Polynomial class
-        The pade approximation of the polynomial defined by `an` is
-        `p(x)/q(x)`.
-
-    Examples
-    --------
-    >>> from scipy import misc
-    >>> e_exp = [1.0, 1.0, 1.0/2.0, 1.0/6.0, 1.0/24.0, 1.0/120.0]
-    >>> p, q = misc.pade(e_exp, 2)
-
-    >>> e_exp.reverse()
-    >>> e_poly = np.poly1d(e_exp)
-
-    Compare ``e_poly(x)`` and the pade approximation ``p(x)/q(x)``
-
-    >>> e_poly(1)
-    2.7166666666666668
-
-    >>> p(1)/q(1)
-    2.7179487179487181
-
-    """
-    from scipy import linalg
-    an = asarray(an)
-    N = len(an) - 1
-    n = N - m
-    if n < 0:
-        raise ValueError("Order of q <m> must be smaller than len(an)-1.")
-    Akj = eye(N+1, n+1)
-    Bkj = zeros((N+1, m), 'd')
-    for row in range(1, m+1):
-        Bkj[row,:row] = -(an[:row])[::-1]
-    for row in range(m+1, N+1):
-        Bkj[row,:] = -(an[row-m:row])[::-1]
-    C = hstack((Akj, Bkj))
-    pq = linalg.solve(C, an)
-    p = pq[:n+1]
-    q = r_[1.0, pq[n+1:]]
-    return poly1d(p[::-1]), poly1d(q[::-1])
-
-
 def lena():
     """
-    Get classic image processing example image, Lena, at 8-bit grayscale
-    bit-depth, 512 x 512 size.
+    Function that previously returned an example image
+
+    .. note:: Removed in 0.17
 
     Parameters
     ----------
@@ -261,33 +132,24 @@ def lena():
 
     Returns
     -------
-    lena : ndarray
-        Lena image
+    None
 
-    Examples
+    Raises
+    ------
+    RuntimeError
+        This functionality has been removed due to licensing reasons.
+
+    Notes
+    -----
+    The image previously returned by this function has an incompatible license
+    and has been removed from SciPy. Please use `face` or `ascent` instead.
+
+    See Also
     --------
-    >>> import scipy.misc
-    >>> lena = scipy.misc.lena()
-    >>> lena.shape
-    (512, 512)
-    >>> lena.max()
-    245
-    >>> lena.dtype
-    dtype('int32')
-
-    >>> import matplotlib.pyplot as plt
-    >>> plt.gray()
-    >>> plt.imshow(lena)
-    >>> plt.show()
-
+    face, ascent
     """
-    import pickle
-    import os
-    fname = os.path.join(os.path.dirname(__file__),'lena.dat')
-    f = open(fname,'rb')
-    lena = array(pickle.load(f))
-    f.close()
-    return lena
+    raise RuntimeError('lena() is no longer included in SciPy, please use '
+                       'ascent() or face() instead')
 
 
 def ascent():
@@ -338,7 +200,7 @@ def face(gray=False):
     Parameters
     ----------
     gray : bool, optional
-        If True then return color image, otherwise return an 8-bit gray-scale
+        If True return 8-bit grey-scale image, otherwise return a color image
 
     Returns
     -------
@@ -352,7 +214,7 @@ def face(gray=False):
     >>> face.shape
     (768, 1024, 3)
     >>> face.max()
-    230
+    255
     >>> face.dtype
     dtype('uint8')
 

@@ -67,9 +67,11 @@
  *
  */
 
-#include <stdlib.h>
 #include "mconf.h"
-extern double MAXNUM, MACHEP;
+#include <float.h>
+#include <stdlib.h>
+
+extern double MACHEP;
 
 static double iv_asymptotic(double v, double x);
 void ikv_asymptotic_uniform(double v, double x, double *Iv, double *Kv);
@@ -78,7 +80,7 @@ void ikv_temme(double v, double x, double *Iv, double *Kv);
 double iv(double v, double x)
 {
     int sign;
-    double t, vp, ax, res;
+    double t, ax, res;
 
     /* If v is a negative integer, invoke symmetry */
     t = floor(v);
@@ -138,7 +140,7 @@ double iv(double v, double x)
  */
 static double iv_asymptotic(double v, double x)
 {
-    double mu, mup;
+    double mu;
     double sum, term, prefactor, factor;
     int k;
 
@@ -421,7 +423,7 @@ static int CF1_ik(double v, double x, double *fv)
      * Lentz, Applied Optics, vol 15, 668 (1976)
      */
     tolerance = 2 * MACHEP;
-    tiny = 1 / sqrt(MAXNUM);
+    tiny = 1 / sqrt(DBL_MAX);
     C = f = tiny;		/* b0 = 0, replace with tiny */
     D = 0;
     for (k = 1; k < MAXITER; k++) {

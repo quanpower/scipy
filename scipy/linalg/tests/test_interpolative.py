@@ -1,6 +1,5 @@
 #******************************************************************************
 #   Copyright (C) 2013 Kenneth L. Ho
-#
 #   Redistribution and use in source and binary forms, with or without
 #   modification, are permitted provided that the following conditions are met:
 #
@@ -29,11 +28,12 @@
 
 import scipy.linalg.interpolative as pymatrixid
 import numpy as np
-from scipy.linalg import hilbert, svdvals
+from scipy.linalg import hilbert, svdvals, norm
 from scipy.sparse.linalg import aslinearoperator
 import time
 
-from numpy.testing import assert_, assert_allclose, assert_raises
+from numpy.testing import assert_, assert_allclose
+from pytest import raises as assert_raises
 
 
 def _debug_print(s):
@@ -44,7 +44,7 @@ def _debug_print(s):
 class TestInterpolativeDecomposition(object):
     def test_id(self):
         for dtype in [np.float64, np.complex128]:
-            yield self.check_id, dtype
+            self.check_id(dtype)
 
     def check_id(self, dtype):
         # Test ID routines on a Hilbert matrix.
@@ -217,15 +217,16 @@ class TestInterpolativeDecomposition(object):
         for M in [A, B]:
             ML = aslinearoperator(M)
 
-            rank_np = np.linalg.matrix_rank(M, 1e-9)
-            rank_est = pymatrixid.estimate_rank(M, 1e-9)
-            rank_est_2 = pymatrixid.estimate_rank(ML, 1e-9)
+            rank_tol = 1e-9
+            rank_np = np.linalg.matrix_rank(M, norm(M, 2)*rank_tol)
+            rank_est = pymatrixid.estimate_rank(M, rank_tol)
+            rank_est_2 = pymatrixid.estimate_rank(ML, rank_tol)
 
             assert_(rank_est >= rank_np)
             assert_(rank_est <= rank_np + 10)
 
-            assert_(rank_est_2 >= rank_np)
-            assert_(rank_est_2 <= rank_np + 10)
+            assert_(rank_est_2 >= rank_np - 4)
+            assert_(rank_est_2 <= rank_np + 4)
 
     def test_rand(self):
         pymatrixid.seed('default')
@@ -249,3 +250,9 @@ class TestInterpolativeDecomposition(object):
     def test_badcall(self):
         A = hilbert(5).astype(np.float32)
         assert_raises(ValueError, pymatrixid.interp_decomp, A, 1e-6, rand=False)
+
+    def test_rank_too_large(self):
+        # svd(array, k) should not segfault
+        a = np.ones((4, 3))
+        with assert_raises(ValueError):
+            pymatrixid.svd(a, 4)

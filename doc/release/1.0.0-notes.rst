@@ -1,0 +1,205 @@
+==========================
+SciPy 1.0.0 Release Notes
+==========================
+
+.. note:: Scipy 1.0.0 is not released yet!
+
+.. contents::
+
+SciPy 1.0.0 is the culmination of X months of hard work. It contains
+many new features, numerous bug-fixes, improved test coverage and
+better documentation.  There have been a number of deprecations and
+API changes in this release, which are documented below.  All users
+are encouraged to upgrade to this release, as there are a large number
+of bug-fixes and optimizations.  Moreover, our development attention
+will now shift to bug-fix releases on the 1.0.x branch, and on adding
+new features on the master branch.
+
+This release requires Python 2.7 or 3.4+ and NumPy 1.8.2 or greater.
+
+
+New features
+============
+
+`scipy.cluster` improvements
+----------------------------
+
+`scipy.cluster.hierarchy.optimal_leaf_ordering`, a function to reorder a
+linkage matrix to minimize distances between adjacent leaves, was added.
+
+
+`scipy.fftpack` improvements
+----------------------------
+
+N-dimensional versions of the discrete sine and cosine transforms and their
+inverses were added as ``dctn``, ``idctn``, ``dstn`` and ``idstn``.
+
+
+`scipy.integrate` improvements
+------------------------------
+
+A set of new ODE solvers have been added to `scipy.integrate`.  The convenience
+function `scipy.integrate.solve_ivp` allows uniform access to all solvers.
+The individual solvers (``RK23``, ``RK45``, ``Radau``, ``BDF`` and ``LSODA``)
+can also be used directly.
+
+
+`scipy.linalg` improvements
+----------------------------
+
+Wrappers for the LAPACK functions ``*gels``, ``sstev`` and ``dstev`` have been
+added.
+
+The function `scipy.linalg.subspace_angles` has been added to compute the
+subspace angles between two matrices.
+
+
+`scipy.ndimage` improvements
+----------------------------
+
+Support for homogeneous coordinate transforms has been added to
+`scipy.ndimage.affine_transform`.
+
+The ``ndimage`` C code underwent a significant refactoring, and is now
+a lot easier to understand and maintain.
+
+
+`scipy.sparse` improvements
+---------------------------
+
+Iterating over and slicing of CSC and CSR matrices is now faster by up to ~35%.
+
+The ``tocsr`` method of COO matrices is now several times faster.
+
+The ``diagonal`` method of sparse matrices now takes a parameter, indicating
+which diagonal to return.
+
+
+`scipy.sparse.linalg` improvements
+----------------------------------
+
+A new iterative solver for large-scale nonsymmetric sparse linear systems,
+`scipy.sparse.linalg.gcrotmk`, was added.  It implements ``GCROT(m,k)``, a
+flexible variant of ``GCROT``.
+
+`scipy.sparse.linalg.lsmr` now accepts an initial guess, yielding potentially
+faster convergence.
+
+SuperLU was updated to version 5.2.1.
+
+
+`scipy.optimize` improvements
+-----------------------------
+
+The methods ``trust-region-exact`` and ``trust-krylov`` have been added to the
+function `scipy.optimize.minimize`. These new trust-region methods solve the
+subproblem with higher accuracy at the cost of more Hessian factorizations
+(compared to dogleg) or more matrix vector products (compared to ncg) but
+usually require less nonlinear iterations and are able to deal with indefinite
+Hessians. They seem very competitive against the other Newton methods
+implemented in scipy.
+
+`scipy.optimize.linprog` gained an interior point method.  Its performance is
+superior (both in accuracy and speed) to the older simplex method.
+
+
+`scipy.stats` improvements
+--------------------------
+
+The methods ``cdf`` and ``logcdf`` were added to
+`scipy.stats.multivariate_normal`, providing the cumulative distribution
+function of the multivariate normal distribution.
+
+New statistical distance functions were added, namely
+`scipy.stats.wasserstein_distance` for the first Wasserstein distance and
+`scipy.stats.energy_distance` for the energy distance.
+
+`scipy.spatial.distance` improvements
+-------------------------------------
+
+Optional `out` parameter was added to pdist and cdist allowing the user to 
+specify where the resulting distance matrix is to be stored
+
+
+Deprecated features
+===================
+
+``scipy.interpolate.interpolate_wrapper`` and all functions in that submodule
+are deprecated.  This was a never finished set of wrapper functions which is
+not relevant anymore.
+
+The ``fillvalue`` of `scipy.signal.convolve2d` will be cast directly to the
+dtypes of the input arrays in the future and checked that it is a scalar or
+an array with a single element.
+
+
+Backwards incompatible changes
+==============================
+
+The default value for the ``zero_phase`` keyword of `scipy.signal.decimate`
+has been changed to True.
+
+The ``kmeans`` and ``kmeans2`` functions in `scipy.cluster.vq` changed the
+method used for random initialization, so using a fixed random seed will
+not necessarily produce the same results as in previous versions.
+
+`scipy.special.gammaln` does not accept complex arguments anymore.
+
+The deprecated functions ``sph_jn``, ``sph_yn``, ``sph_jnyn``, ``sph_in``,
+``sph_kn``, and ``sph_inkn`` have been removed. Users should instead use
+the functions ``spherical_jn``, ``spherical_yn``, ``spherical_in``, and
+``spherical_kn``. Be aware that the new functions have different
+signatures.
+
+The cross-class properties of `scipy.signal.lti` systems have been removed.
+The following properties/setters have been removed:
+
+Name - (accessing/setting has been removed) - (setting has been removed)
+
+* StateSpace - (``num``, ``den``, ``gain``) - (``zeros``, ``poles``)
+* TransferFunction (``A``, ``B``, ``C``, ``D``, ``gain``) - (``zeros``, ``poles``)
+* ZerosPolesGain (``A``, ``B``, ``C``, ``D``, ``num``, ``den``) - ()
+
+
+The method ``var`` of `scipy.stats.dirichlet` now returns a scalar rather than
+an ndarray when the length of alpha is 1.
+
+
+Other changes
+=============
+
+SciPy now has a formal governance structure.  It consists of a BDFL (Pauli
+Virtanen) and a Steering Committee.  See `the governance document
+<https://github.com/scipy/scipy/blob/master/doc/source/dev/governance/governance.rst>`_
+for details.
+
+It is now possible to build SciPy on Windows with MSVC + gfortran!  Continuous
+integration has been set up for this build configuration on Appveyor, building
+against OpenBLAS.
+
+Continuous integration for OS X has been set up on TravisCI.
+
+The SciPy test suite has been migrated from ``nose`` to ``pytest``.
+
+``scipy/_distributor_init.py`` was added to allow redistributors of SciPy to
+add custom code that needs to run when importing SciPy (e.g. checks for
+hardware, DLL search paths, etc.).
+
+Support for PEP 518 (specifying build system requirements) was added - see
+``pyproject.toml`` in the root of the SciPy repository.
+
+In order to have consistent function names, the function
+``scipy.linalg.solve_lyapunov`` is renamed to
+`scipy.linalg.solve_continuous_lyapunov`.  The old name is kept for
+backwards-compatibility.
+
+
+Authors
+=======
+
+Issues closed
+-------------
+
+
+Pull requests
+-------------

@@ -3,21 +3,15 @@
 
 from __future__ import division, print_function, absolute_import
 
-__all__ = ['upcast','getdtype','isscalarlike','isintlike',
-            'isshape','issequence','isdense','ismatrix']
-
 import warnings
 import numpy as np
 
-from scipy.lib._version import NumpyVersion
+__all__ = ['upcast', 'getdtype', 'isscalarlike', 'isintlike',
+           'isshape', 'issequence', 'isdense', 'ismatrix', 'get_sum_dtype']
 
-# keep this list syncronized with sparsetools
-#supported_dtypes = ['bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32',
-#        'int64', 'uint64', 'float32', 'float64',
-#        'complex64', 'complex128']
-supported_dtypes = ['bool', 'int8','uint8','short','ushort','intc','uintc',
-        'longlong','ulonglong','single','double','longdouble',
-        'csingle','cdouble','clongdouble']
+supported_dtypes = ['bool', 'int8', 'uint8', 'short', 'ushort', 'intc',
+                    'uintc', 'longlong', 'ulonglong', 'single', 'double',
+                    'longdouble', 'csingle', 'cdouble', 'clongdouble']
 supported_dtypes = [np.typeDict[x] for x in supported_dtypes]
 
 _upcast_memo = {}
@@ -47,12 +41,7 @@ def upcast(*args):
     if t is not None:
         return t
 
-    if np.all([np.issubdtype(np.bool, arg) for arg in args]):
-        # numpy 1.5.x compat - it gives int8 for
-        # np.find_common_type([np.bool, np.bool)
-        upcast = np.bool
-    else:
-        upcast = np.find_common_type(args, [])
+    upcast = np.find_common_type(args, [])
 
     for t in supported_dtypes:
         if np.can_cast(upcast, t):
@@ -87,6 +76,8 @@ def downcast_intp_index(arr):
     intp.
     """
     if arr.dtype.itemsize > np.dtype(np.intp).itemsize:
+        if arr.size == 0:
+            return arr.astype(np.intp)
         maxval = arr.max()
         minval = arr.min()
         if maxval > np.iinfo(np.intp).max or minval < np.iinfo(np.intp).min:
@@ -98,7 +89,7 @@ def downcast_intp_index(arr):
 
 
 def to_native(A):
-    return np.asarray(A,dtype=A.dtype.newbyteorder('native'))
+    return np.asarray(A, dtype=A.dtype.newbyteorder('native'))
 
 
 def getdtype(dtype, a=None, default=None):
@@ -108,15 +99,13 @@ def getdtype(dtype, a=None, default=None):
     are both None, construct a data type out of the 'default' parameter.
     Furthermore, 'dtype' must be in 'allowed' set.
     """
-    #TODO is this really what we want?
-    canCast = True
+    # TODO is this really what we want?
     if dtype is None:
         try:
             newdtype = a.dtype
         except AttributeError:
             if default is not None:
                 newdtype = np.dtype(default)
-                canCast = False
             else:
                 raise TypeError("could not interpret data type")
     else:
@@ -126,10 +115,27 @@ def getdtype(dtype, a=None, default=None):
 
     return newdtype
 
-def get_index_dtype(arrays=(), maxval=None):
+
+def get_index_dtype(arrays=(), maxval=None, check_contents=False):
     """
     Based on input (integer) arrays `a`, determine a suitable index data
     type that can hold the data in the arrays.
+
+    Parameters
+    ----------
+    arrays : tuple of array_like
+        Input arrays whose types/contents to check
+    maxval : float, optional
+        Maximum value needed
+    check_contents : bool, optional
+        Whether to check the values in the arrays and not just their types.
+        Default: False (check only the types)
+
+    Returns
+    -------
+    dtype : dtype
+        Suitable index data type (int32 or int64)
+
     """
 
     int32max = np.iinfo(np.int32).max
@@ -145,8 +151,34 @@ def get_index_dtype(arrays=(), maxval=None):
     for arr in arrays:
         arr = np.asarray(arr)
         if arr.dtype > np.int32:
+            if check_contents:
+                if arr.size == 0:
+                    # a bigger type not needed
+                    continue
+                elif np.issubdtype(arr.dtype, np.integer):
+                    maxval = arr.max()
+                    minval = arr.min()
+                    if (minval >= np.iinfo(np.int32).min and
+                            maxval <= np.iinfo(np.int32).max):
+                        # a bigger type not needed
+                        continue
+
             dtype = np.int64
+            break
+
     return dtype
+
+
+def get_sum_dtype(dtype):
+    """Mimic numpy's casting for np.sum"""
+    if np.issubdtype(dtype, np.float_):
+        return np.float_
+    if dtype.kind == 'u' and np.can_cast(dtype, np.uint):
+        return np.uint
+    if np.can_cast(dtype, np.int_):
+        return np.int_
+    return dtype
+
 
 def isscalarlike(x):
     """Is x either a scalar, an array scalar, or a 0-dim array?"""
@@ -157,16 +189,12 @@ def isintlike(x):
     """Is x appropriate as an index into a sparse matrix? Returns True
     if it can be cast safely to a machine int.
     """
-    if issequence(x):
+    if not isscalarlike(x):
         return False
-    else:
-        try:
-            if int(x) == x:
-                return True
-            else:
-                return False
-        except TypeError:
-            return False
+    try:
+        return bool(int(x) == x)
+    except (TypeError, ValueError):
+        return False
 
 
 def isshape(x):
@@ -179,23 +207,48 @@ def isshape(x):
         return False
     else:
         if isintlike(M) and isintlike(N):
-            if np.rank(M) == 0 and np.rank(N) == 0:
+            if np.ndim(M) == 0 and np.ndim(N) == 0:
                 return True
         return False
 
 
 def issequence(t):
-    return (isinstance(t, (list, tuple)) and (len(t) == 0 or np.isscalar(t[0]))) \
-           or (isinstance(t, np.ndarray) and (t.ndim == 1))
+    return ((isinstance(t, (list, tuple)) and
+            (len(t) == 0 or np.isscalar(t[0]))) or
+            (isinstance(t, np.ndarray) and (t.ndim == 1)))
 
 
 def ismatrix(t):
-    return ((issequence(t) and issequence(t[0]) and (len(t[0]) == 0 or np.isscalar(t[0][0])))
-            or (isinstance(t, np.ndarray) and t.ndim == 2))
+    return ((isinstance(t, (list, tuple)) and
+             len(t) > 0 and issequence(t[0])) or
+            (isinstance(t, np.ndarray) and t.ndim == 2))
 
 
 def isdense(x):
     return isinstance(x, np.ndarray)
+
+
+def validateaxis(axis):
+    if axis is not None:
+        axis_type = type(axis)
+
+        # In NumPy, you can pass in tuples for 'axis', but they are
+        # not very useful for sparse matrices given their limited
+        # dimensions, so let's make it explicit that they are not
+        # allowed to be passed in
+        if axis_type == tuple:
+            raise TypeError(("Tuples are not accepted for the 'axis' "
+                             "parameter. Please pass in one of the "
+                             "following: {-2, -1, 0, 1, None}."))
+
+        # If not a tuple, check that the provided axis is actually
+        # an integer and raise a TypeError similar to NumPy's
+        if not np.issubdtype(np.dtype(axis_type), np.integer):
+            raise TypeError("axis must be an integer, not {name}"
+                            .format(name=axis_type.__name__))
+
+        if not (-2 <= axis <= 1):
+            raise ValueError("axis out of range")
 
 
 class IndexMixin(object):
@@ -280,9 +333,10 @@ class IndexMixin(object):
         # Supporting sparse boolean indexing with both row and col does
         # not work because spmatrix.ndim is always 2.
         if isspmatrix(row) or isspmatrix(col):
-            raise IndexError("Indexing with sparse matrices is not supported"
-                    " except boolean indexing where matrix and index are equal"
-                    " shapes.")
+            raise IndexError(
+                "Indexing with sparse matrices is not supported "
+                "except boolean indexing where matrix and index "
+                "are equal shapes.")
         if isinstance(row, np.ndarray) and row.dtype.kind == 'b':
             row = self._boolean_index_to_array(row)
         if isinstance(col, np.ndarray) and col.dtype.kind == 'b':
@@ -299,14 +353,14 @@ class IndexMixin(object):
 
         i_slice = isinstance(i, slice)
         if i_slice:
-            i = self._slicetoarange(i, self.shape[0])[:,None]
+            i = self._slicetoarange(i, self.shape[0])[:, None]
         else:
             i = np.atleast_1d(i)
 
         if isinstance(j, slice):
-            j = self._slicetoarange(j, self.shape[1])[None,:]
+            j = self._slicetoarange(j, self.shape[1])[None, :]
             if i.ndim == 1:
-                i = i[:,None]
+                i = i[:, None]
             elif not i_slice:
                 raise IndexError('index returns 3-dim structure')
         elif isscalarlike(j):
@@ -326,81 +380,9 @@ class IndexMixin(object):
 
         if i.ndim == 1:
             # return column vectors for 1-D indexing
-            i = i[None,:]
-            j = j[None,:]
+            i = i[None, :]
+            j = j[None, :]
         elif i.ndim > 2:
             raise IndexError("Index dimension must be <= 2")
 
         return i, j
-
-
-def _compat_unique_impl(ar, return_index=False, return_inverse=False):
-    """
-    Copy of numpy.unique() from Numpy 1.7.1.
-
-    Earlier versions have bugs in how return_index behaves.
-    """
-    try:
-        ar = ar.flatten()
-    except AttributeError:
-        if not return_inverse and not return_index:
-            items = sorted(set(ar))
-            return np.asarray(items)
-        else:
-            ar = np.asanyarray(ar).flatten()
-
-    if ar.size == 0:
-        if return_inverse and return_index:
-            return ar, np.empty(0, np.bool), np.empty(0, np.bool)
-        elif return_inverse or return_index:
-            return ar, np.empty(0, np.bool)
-        else:
-            return ar
-
-    if return_inverse or return_index:
-        if return_index:
-            perm = ar.argsort(kind='mergesort')
-        else:
-            perm = ar.argsort()
-        aux = ar[perm]
-        flag = np.concatenate(([True], aux[1:] != aux[:-1]))
-        if return_inverse:
-            iflag = np.cumsum(flag) - 1
-            iperm = perm.argsort()
-            if return_index:
-                return aux[flag], perm[flag], iflag[iperm]
-            else:
-                return aux[flag], iflag[iperm]
-        else:
-            return aux[flag], perm[flag]
-
-    else:
-        ar.sort()
-        flag = np.concatenate(([True], ar[1:] != ar[:-1]))
-        return ar[flag]
-
-
-if NumpyVersion(np.__version__) > '1.7.0-dev':
-    _compat_unique = np.unique
-else:
-    _compat_unique = _compat_unique_impl
-
-
-def _compat_bincount_impl(x, weights=None, minlength=None):
-    """
-    Bincount with minlength keyword added for Numpy 1.5.
-    """
-    if weights is None:
-        x = np.bincount(x)
-    else:
-        x = np.bincount(x, weights=weights)
-    if minlength is not None:
-        if x.shape[0] < minlength:
-            x = np.r_[x, np.zeros((minlength - x.shape[0],))]
-    return x
-
-
-if NumpyVersion(np.__version__) > '1.6.0-dev':
-    _compat_bincount = np.bincount
-else:
-    _compat_bincount = _compat_bincount_impl

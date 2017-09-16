@@ -30,13 +30,16 @@
 
 from __future__ import division, print_function, absolute_import
 
-import warnings
 import math
+import sys
 
 import numpy
 from numpy import fft
 from numpy.testing import (assert_, assert_equal, assert_array_equal,
-        run_module_suite, assert_array_almost_equal, assert_almost_equal)
+        assert_array_almost_equal, assert_almost_equal)
+import pytest
+from pytest import raises as assert_raises
+from scipy._lib._numpy_compat import suppress_warnings
 import scipy.ndimage as ndimage
 
 
@@ -48,7 +51,7 @@ def sumsq(a, b):
 
 
 class TestNdimage:
-    def setUp(self):
+    def setup_method(self):
         # list of numarray data types
         self.integer_types = [numpy.int8, numpy.uint8, numpy.int16,
                 numpy.uint16, numpy.int32, numpy.uint32,
@@ -1661,6 +1664,23 @@ class TestNdimage:
                                 extra_keywords={'b': 2})
             assert_array_almost_equal(out, [5, 7])
 
+    def test_geometric_transform_endianness_with_output_parameter(self):
+        # geometric transform given output ndarray or dtype with non-native endianness
+        # see issue #4127
+        data = numpy.array([1])
+
+        def mapping(x):
+            return x
+
+        for out in [data.dtype, data.dtype.newbyteorder(),
+                    numpy.empty_like(data),
+                    numpy.empty_like(data).astype(data.dtype.newbyteorder())]:
+            returned = ndimage.geometric_transform(data, mapping,
+                                        data.shape,
+                                        output=out)
+            result = out if returned is None else returned
+            assert_array_almost_equal(result, [1])
+
     def test_map_coordinates01(self):
         data = numpy.array([[4, 1, 3, 2],
                                [7, 6, 8, 5],
@@ -1704,6 +1724,32 @@ class TestNdimage:
         out = ndimage.map_coordinates(data[:,::2], idx)
         assert_array_almost_equal(out, [[0, 0], [0, 4], [0, 7]])
         assert_array_almost_equal(out, ndimage.shift(data[:,::2], (1, 1)))
+
+    def test_map_coordinates_endianness_with_output_parameter(self):
+        # output parameter given as array or dtype with either endianness
+        # see issue #4127
+        data = numpy.array([[1, 2], [7, 6]])
+        expected = numpy.array([[0, 0], [0, 1]])
+        idx = numpy.indices(data.shape)
+        idx -= 1
+        for out in [data.dtype, data.dtype.newbyteorder(), numpy.empty_like(expected),
+                    numpy.empty_like(expected).astype(expected.dtype.newbyteorder())]:
+            returned = ndimage.map_coordinates(data, idx, output=out)
+            result = out if returned is None else returned
+            assert_array_almost_equal(result, expected)
+
+    @pytest.mark.skipif('win32' in sys.platform or numpy.intp(0).itemsize < 8,
+                        reason="do not run on 32 bit or windows (no sparse memory)")
+    def test_map_coordinates_large_data(self):
+        # check crash on large data
+        try:
+            n = 30000
+            a = numpy.empty(n**2, dtype=numpy.float32).reshape(n, n)
+            # fill the part we might read
+            a[n - 3:,n - 3:] = 0
+            ndimage.map_coordinates(a, [[n - 1.5], [n - 1.5]], order=1)
+        except MemoryError:
+            raise pytest.skip("Not enough memory available")
 
     def test_affine_transform01(self):
         data = numpy.array([1])
@@ -1913,6 +1959,106 @@ class TestNdimage:
                                                      (2,), order=order)
             assert_array_almost_equal(out, [1, 9])
 
+    def test_affine_transform22(self):
+        # shift and offset interaction; see issue #1547
+        data = numpy.array([4, 1, 3, 2])
+        for order in range(0, 6):
+            out = ndimage.affine_transform(data, [[2]], [-1],
+                                           (3,),order=order)
+            assert_array_almost_equal(out, [0, 1, 2])
+
+    def test_affine_transform23(self):
+        # shift and offset interaction; see issue #1547
+        data = numpy.array([4, 1, 3, 2])
+        for order in range(0, 6):
+            out = ndimage.affine_transform(data, [[0.5]], [-1],
+                                           (8,),order=order)
+            assert_array_almost_equal(out[::2], [0, 4, 1, 3])
+
+    def test_affine_transform24(self):
+        # consistency between diagonal and non-diagonal case; see issue #1547
+        data = numpy.array([4, 1, 3, 2])
+        for order in range(0, 6):
+            with suppress_warnings() as sup:
+                sup.filter(UserWarning,
+                           "The behaviour of affine_transform with a one-dimensional array .* has changed")
+                out1 = ndimage.affine_transform(data, [2], -1, order=order)
+            out2 = ndimage.affine_transform(data, [[2]], -1,
+                                                order=order)
+            assert_array_almost_equal(out1, out2)
+
+    def test_affine_transform25(self):
+        # consistency between diagonal and non-diagonal case; see issue #1547
+        data = numpy.array([4, 1, 3, 2])
+        for order in range(0, 6):
+            with suppress_warnings() as sup:
+                sup.filter(UserWarning,
+                           "The behaviour of affine_transform with a one-dimensional array .* has changed")
+                out1 = ndimage.affine_transform(data, [0.5], -1, order=order)
+            out2 = ndimage.affine_transform(data, [[0.5]], -1,
+                                                order=order)
+            assert_array_almost_equal(out1, out2)
+
+    def test_affine_transform26(self):
+        # test homogeneous coordinates
+        data = numpy.array([[4, 1, 3, 2],
+                            [7, 6, 8, 5],
+                            [3, 5, 3, 6]])
+        for order in range(0, 6):
+            if (order > 1):
+                filtered = ndimage.spline_filter(data, order=order)
+            else:
+                filtered = data
+            tform_original = numpy.eye(2)
+            offset_original = -numpy.ones((2, 1))
+            tform_h1 = numpy.hstack((tform_original, offset_original))
+            tform_h2 = numpy.vstack((tform_h1, [[0, 0, 1]]))
+            out1 = ndimage.affine_transform(filtered, tform_original,
+                                            offset_original.ravel(),
+                                            order=order, prefilter=False)
+            out2 = ndimage.affine_transform(filtered, tform_h1, order=order,
+                                            prefilter=False)
+            out3 = ndimage.affine_transform(filtered, tform_h2, order=order,
+                                            prefilter=False)
+            for out in [out1, out2, out3]:
+                assert_array_almost_equal(out, [[0, 0, 0, 0],
+                                                [0, 4, 1, 3],
+                                                [0, 7, 6, 8]])
+
+    def test_affine_transform27(self):
+        # test valid homogeneous transformation matrix
+        data = numpy.array([[4, 1, 3, 2],
+                            [7, 6, 8, 5],
+                            [3, 5, 3, 6]])
+        tform_h1 = numpy.hstack((numpy.eye(2), -numpy.ones((2, 1))))
+        tform_h2 = numpy.vstack((tform_h1, [[5, 2, 1]]))
+        assert_raises(ValueError, ndimage.affine_transform, data, tform_h2)
+
+    def test_affine_transform_1d_endianness_with_output_parameter(self):
+        # 1d affine transform given output ndarray or dtype with either endianness
+        # see issue #7388
+        data = numpy.ones((2, 2))
+        for out in [numpy.empty_like(data),
+                    numpy.empty_like(data).astype(data.dtype.newbyteorder()),
+                    data.dtype, data.dtype.newbyteorder()]:
+            with suppress_warnings() as sup:
+                sup.filter(UserWarning,
+                           "The behaviour of affine_transform with a one-dimensional array .* has changed")
+                returned = ndimage.affine_transform(data, [1, 1], output=out)
+            result = out if returned is None else returned
+            assert_array_almost_equal(result, [[1, 1], [1, 1]])
+
+    def test_affine_transform_multi_d_endianness_with_output_parameter(self):
+        # affine transform given output ndarray or dtype with either endianness
+        # see issue #4127
+        data = numpy.array([1])
+        for out in [data.dtype, data.dtype.newbyteorder(),
+                    numpy.empty_like(data),
+                    numpy.empty_like(data).astype(data.dtype.newbyteorder())]:
+            returned = ndimage.affine_transform(data, [[1]], output=out)
+            result = out if returned is None else returned
+            assert_array_almost_equal(result, [1])
+
     def test_shift01(self):
         data = numpy.array([1])
         for order in range(0, 6):
@@ -2011,13 +2157,9 @@ class TestNdimage:
         assert_array_equal(out,arr)
 
     def test_zoom3(self):
-        err = numpy.seterr(invalid='ignore')
         arr = numpy.array([[1, 2]])
-        try:
-            out1 = ndimage.zoom(arr, (2, 1))
-            out2 = ndimage.zoom(arr, (1,2))
-        finally:
-            numpy.seterr(**err)
+        out1 = ndimage.zoom(arr, (2, 1))
+        out2 = ndimage.zoom(arr, (1,2))
 
         assert_array_almost_equal(out1, numpy.array([[1, 2], [1, 2]]))
         assert_array_almost_equal(out2, numpy.array([[1, 1, 2, 2]]))
@@ -2027,40 +2169,35 @@ class TestNdimage:
                 [5, 6, 7, 8],
                 [9, 10, 11, 12]]
         for order in range(0, 6):
-            out = ndimage.affine_transform(data, [0.5, 0.5], 0,
-                                                     (6, 8), order=order)
+            with suppress_warnings() as sup:
+                sup.filter(UserWarning,
+                           "The behaviour of affine_transform with a one-dimensional array .* has changed")
+                out = ndimage.affine_transform(data, [0.5, 0.5], 0,
+                                               (6, 8), order=order)
             assert_array_almost_equal(out[::2, ::2], data)
 
     def test_zoom_infinity(self):
         # Ticket #1419 regression test
-        err = numpy.seterr(divide='ignore')
-
-        try:
-            dim = 8
-            ndimage.zoom(numpy.zeros((dim, dim)), 1./dim, mode='nearest')
-        finally:
-            numpy.seterr(**err)
+        dim = 8
+        ndimage.zoom(numpy.zeros((dim, dim)), 1./dim, mode='nearest')
 
     def test_zoom_zoomfactor_one(self):
         # Ticket #1122 regression test
         arr = numpy.zeros((1, 5, 5))
         zoom = (1.0, 2.0, 2.0)
 
-        err = numpy.seterr(invalid='ignore')
-        try:
-            out = ndimage.zoom(arr, zoom, cval=7)
-        finally:
-            numpy.seterr(**err)
+        out = ndimage.zoom(arr, zoom, cval=7)
         ref = numpy.zeros((1, 10, 10))
         assert_array_almost_equal(out, ref)
 
     def test_zoom_output_shape_roundoff(self):
         arr = numpy.zeros((3, 11, 25))
         zoom = (4.0 / 3, 15.0 / 11, 29.0 / 25)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
+        with suppress_warnings() as sup:
+            sup.filter(UserWarning,
+                       "From scipy 0.13.0, the output shape of zoom.. is calculated with round.. instead of int")
             out = ndimage.zoom(arr, zoom)
-            assert_array_equal(out.shape, (4, 15, 29))
+        assert_array_equal(out.shape, (4, 15, 29))
 
     def test_rotate01(self):
         data = numpy.array([[0, 0, 0, 0],
@@ -4453,7 +4590,7 @@ class TestNdimage:
 
 class TestDilateFix:
 
-    def setUp(self):
+    def setup_method(self):
         # dilation related setup
         self.array = numpy.array([[0, 0, 0, 0, 0,],
                                   [0, 0, 0, 0, 0,],
@@ -4474,6 +4611,3 @@ class TestDilateFix:
         result = ndimage.grey_dilation(self.array, size=3)
         assert_array_almost_equal(result, self.dilated3x3)
 
-
-if __name__ == "__main__":
-    run_module_suite()

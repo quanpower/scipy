@@ -25,7 +25,9 @@ Basics
    solve - Solve a linear system of equations
    solve_banded - Solve a banded linear system
    solveh_banded - Solve a Hermitian or symmetric banded system
+   solve_circulant - Solve a circulant system
    solve_triangular - Solve a triangular matrix
+   solve_toeplitz - Solve a toeplitz matrix
    det - Find the determinant of a square matrix
    norm - Matrix and vector norm
    lstsq - Solve a linear least-squares problem
@@ -35,6 +37,10 @@ Basics
    kron - Kronecker product of two arrays
    tril - Construct a lower-triangular matrix from a given matrix
    triu - Construct an upper-triangular matrix from a given matrix
+   orthogonal_procrustes - Solve an orthogonal Procrustes problem
+   matrix_balance - Balance matrix entries with a similarity transformation
+   subspace_angles - Compute the subspace angles between two matrices
+   LinAlgError
 
 Eigenvalue Problems
 ===================
@@ -70,7 +76,12 @@ Decompositions
    polar - Compute the polar decomposition.
    qr - QR decomposition of a matrix
    qr_multiply - QR decomposition and multiplication by Q
+   qr_update - Rank k QR update
+   qr_delete - QR downdate on row or column deletion
+   qr_insert - QR update on row or column insertion
+   rq - RQ decomposition of a matrix
    qz - QZ decomposition of a pair of matrices
+   ordqz - QZ decomposition of a pair of matrices with reordering
    schur - Schur decomposition of a matrix
    rsf2csf - Real to complex Schur form
    hessenberg - Hessenberg form of a matrix
@@ -111,9 +122,17 @@ Matrix Equation Solvers
    solve_sylvester - Solve the Sylvester matrix equation
    solve_continuous_are - Solve the continuous-time algebraic Riccati equation
    solve_discrete_are - Solve the discrete-time algebraic Riccati equation
+   solve_continuous_lyapunov - Solve the continous-time Lyapunov equation
    solve_discrete_lyapunov - Solve the discrete-time Lyapunov equation
-   solve_lyapunov - Solve the (continous-time) Lyapunov equation
 
+
+Sketches and Random Projections
+===============================
+
+.. autosummary::
+   :toctree: generated/
+
+   clarkson_woodruff_transform - Applies the Clarkson Woodruff Sketch (a.k.a CountMin Sketch)
 
 Special Matrices
 ================
@@ -127,10 +146,12 @@ Special Matrices
    dft - Discrete Fourier transform matrix
    hadamard - Hadamard matrix of order 2**n
    hankel - Hankel matrix
+   helmert - Helmert matrix
    hilbert - Hilbert matrix
    invhilbert - Inverse Hilbert matrix
    leslie - Leslie matrix
    pascal - Pascal matrix
+   invpascal - Inverse Pascal matrix
    toeplitz - Toeplitz matrix
    tri - Construct a matrix filled with ones at and below a given diagonal
 
@@ -149,6 +170,10 @@ Low-level routines
    `scipy.linalg.blas` -- Low-level BLAS functions
 
    `scipy.linalg.lapack` -- Low-level LAPACK functions
+
+   `scipy.linalg.cython_blas` -- Low-level BLAS functions for Cython
+
+   `scipy.linalg.cython_lapack` -- Low-level LAPACK functions for Cython
 
 """
 
@@ -171,6 +196,9 @@ from .blas import *
 from .lapack import *
 from .special_matrices import *
 from ._solvers import *
+from ._procrustes import *
+from ._decomp_update import *
+from ._sketches import *
 
 __all__ = [s for s in dir() if not s.startswith('_')]
 
@@ -189,6 +217,6 @@ except ValueError:
 
 del k, register_func
 
-from numpy.testing import Tester
-test = Tester().test
-bench = Tester().bench
+from scipy._lib._testutils import PytestTester
+test = PytestTester(__name__)
+del PytestTester
